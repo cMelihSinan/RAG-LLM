@@ -1,0 +1,100 @@
+import torch
+import faiss
+import numpy as np
+from transformers import AutoTokenizer, AutoModel, GPT2LMHeadModel, GPT2Tokenizer
+import os
+import sys
+import nltk
+import re
+from nltk.corpus import stopwords
+import warnings
+
+warnings.filterwarnings("ignore", message="A parameter name that contains `beta`"
+                                          "e will be renamed internally to `bias`.")
+warnings.filterwarnings("ignore", message="A parameter name that contains `gamma` "
+                                          "will be renamed internally to `weight`.")
+
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
+nltk.download('stopwords')
+
+file_path = '/Users/melihsinancubukcuoglu/Desktop/output.txt'
+try:
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+except FileNotFoundError:
+    print(f"Error: The file {file_path} does not exist.")
+    sys.exit(1)
+
+print("File path opened successfully.")
+
+tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased', clean_up_tokenization_spaces=True)
+model = AutoModel.from_pretrained('bert-base-uncased')
+
+gpt_tokenizer = GPT2Tokenizer.from_pretrained('gpt2', clean_up_tokenization_spaces=True)
+gpt_model = GPT2LMHeadModel.from_pretrained('gpt2')
+
+print("Models and tokenizers initialized successfully.")
+
+
+def embed(text):
+    inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    return outputs.last_hidden_state.mean(dim=1).squeeze().numpy()
+
+
+vectors = np.array([embed(line) for line in lines])
+faiss.normalize_L2(vectors)
+
+d = vectors.shape[1]
+index = faiss.IndexFlatL2(d)
+index.add(vectors)
+
+print("Embeddings generated and indexed.")
+
+
+def search(query):
+    query_vector = embed(query)
+    k = 5
+    distances, indices = index.search(np.array([query_vector]), k)
+    unique_results = set()
+    for i in indices[0]:
+        line = lines[i].strip()
+        if query.lower() in line.lower():
+            unique_results.add(line)
+    return list(unique_results)
+
+
+def extract_keywords(query):
+    query = query.lower()
+    query = re.sub(r'[^\w\s]', '', query)
+    words = query.split()
+    stop_words = set(stopwords.words('english'))
+    keywords = [word for word in words if word not in stop_words]
+    return " ".join(keywords)
+
+
+def generate_response(query):
+    keywords = extract_keywords(query)
+    if not keywords:
+        return "Sorry, I couldn't understand the query. Could you please rephrase?"
+    retrieved_docs = search(keywords)
+    if not retrieved_docs:
+        return f"No log found containing the keyword(s) '{keywords}'."
+    return "\n".join(retrieved_docs)
+
+
+def chatbot():
+    print("Welcome to the log analysis chatbot!")
+    print("You can ask questions about the logs, or type 'exit' to quit.")
+    while True:
+        query = input("Ask a question: ")
+        if query.lower() in ['exit', 'quit', 'bye']:
+            print("Exiting the chatbot. Goodbye!")
+            break
+        response = generate_response(query)
+        print("Model Response:\n", response)
+
+
+chatbot()

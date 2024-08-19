@@ -1,0 +1,26 @@
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+def load_data(file_path):
+    data = []
+    with open(file_path, 'r') as file:
+        for line in file:
+            if line.strip():  # Ignore empty lines
+                data.append(line.strip())
+    return data
+
+def vectorize_data(data):
+    vectorizer = TfidfVectorizer()
+    vectors = vectorizer.fit_transform(data)
+    feature_names = vectorizer.get_feature_names_out()  # Get the feature names
+    return vectors.toarray(), feature_names
+
+file_path = '/Users/melihsinancubukcuoglu/Desktop/output.txt'  # Path to the output file
+data = load_data(file_path)
+vectors, feature_names = vectorize_data(data)
+
+for i, vector in enumerate(vectors):
+    print(f"Vector for line {i + 1}: {vector}")
+    print(f"Feature indices: {np.nonzero(vector)[0]}")  # Indices of non-zero features
+    print(f"Corresponding terms: {[feature_names[index] for index in np.nonzero(vector)[0]]}")
+    print("-" * 60)
